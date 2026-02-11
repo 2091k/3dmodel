@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D按键互动器（完整版）</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            /* 只保留主背景的径向渐变 */
+            background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #16213e 100%);
+            font-family: 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+            transition: background-color 0.3s ease;
+            position: relative; /* 为伪元素定位做准备 */
+        }
+        /* 新增伪元素专门绘制网格线，确保显示在主背景上方 */
+        body::before {
+            content: '';
+            position: fixed; /* 全屏固定，不随滚动变化 */
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            /* 网格线样式，透明度可根据需要调整 */
+            background-image: 
+                linear-gradient(rgba(220,220,220,0.12) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(220,220,220,0.12) 1px, transparent 1px);
+            background-size: 30px 30px; /* 网格大小 */
+            pointer-events: none; /* 不影响鼠标点击/交互 */
+            z-index: -1; /* 层级：主背景之上，UI元素之下 */
+        }
+        #container { 
+            width: 100vw; 
+            height: 100vh; 
+            position: relative; 
+        }
+        #info {
+            position: absolute; 
+            top:20px; 
+            left:20px; 
+            color:#fff; 
+            font-size:14px;
+            background: rgba(0,0,0,0.7); 
+            padding:8px 12px; 
+            border-radius:4px; 
+            z-index:100;
+        }
+        #loading {
+            position: absolute; 
+            top:50%; 
+            left:50%; 
+            transform:translate(-50%,-50%);
+            color:#fff; 
+            font-size:18px; 
+            z-index:200;
+        }
+        #config-panel {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            background: rgba(20, 20, 30, 0.95);
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 12px;
+            width: 280px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            display: none;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #config-panel h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #ffcc00;
+            text-align: left;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .config-group {
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .config-group:last-child {
+            border-bottom: none;
+            margin-bottom: 5px;
+        }
+        .config-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ddd;
+            font-weight: 500;
+        }
+        .config-group input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            outline: none;
+            margin: 5px 0;
+        }
+        .config-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffcc00;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(255,204,0,0.5);
+        }
+        .config-group input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffcc00;
+            cursor: pointer;
+            border: none;
+        }
+        .value-display {
+            display: inline-block;
+            margin-left: 8px;
+            font-weight: bold;
+            color: #ffcc00;
+            min-width: 35px;
+            text-align: right;
+            float: right;
+        }
+        .color-preview {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        #toggle-config {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            z-index: 100;
+            font-family: 'Noto Sans SC', sans-serif;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        #toggle-config:hover {
+            background: rgba(0,0,0,0.9);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .config-section {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            border-left: 3px solid #ffcc00;
+        }
+        .config-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: #ffcc00;
+            display: flex;
+            align-items: center;
+        }
+        .config-section h4::before {
+            content: "▶";
+            margin-right: 5px;
+            font-size: 9px;
+            color: #ffcc00;
+        }
+        #colorPresets {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            margin-top: 8px;
+        }
+        .color-preset-btn {
+            padding: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            color: #fff;
+            transition: all 0.2s ease;
+            background: rgba(255,255,255,0.1);
+        }
+        .color-preset-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .config-button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+        #applyChanges {
+            background: linear-gradient(135deg, #ffcc00, #ffaa00);
+            color: #000;
+        }
+        #resetDefaults {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .config-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #closePanel {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            color: #ffcc00;
+            font-size: 18px;
+            cursor: pointer;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #closePanel:hover {
+            background: rgba(255,204,0,0.1);
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider-container input[type="range"] {
+            flex: 1;
+        }
+        .color-input-container {
+            margin-top: 5px;
+        }
+        .color-input-container input[type="color"] {
+            width: 100%;
+            height: 28px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: transparent;
+        }
+        #config-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        #config-panel::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+        }
+        #config-panel::-webkit-scrollbar-thumb {
+            background: rgba(255,204,0,0.5);
+            border-radius: 3px;
+        }
+        #config-panel::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,204,0,0.7);
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading">正在加载...</div>
+        <div id="info">点击按键触发音效 | 拖动旋转 | 滚轮缩放</div>
+        <button id="toggle-config">⚙️ 参数调整</button>
+        <div id="config-panel">
+            <button id="closePanel">×</button>
+            <h3>3D按键参数调节</h3>
+            
+            <div class="config-section">
+                <h4>圆角参数</h4>
+                <div class="config-group">
+                    <label>按键圆角: <span id="keyRadiusValue" class="value-display">0.15</span></label>
+                    <input type="range" id="keyRadiusSlider" min="0.05" max="0.3" step="0.01" value="0.15">
+                </div>
+                <div class="config-group">
+                    <label>基座圆角: <span id="baseRadiusValue" class="value-display">0.1</span></label>
+                    <input type="range" id="baseRadiusSlider" min="0.05" max="0.2" step="0.01" value="0.1">
+                </div>
+                <div class="config-group">
+                    <label>凹槽圆角: <span id="grooveRadiusValue" class="value-display">0.03</span></label>
+                    <input type="range" id="grooveRadiusSlider" min="0.01" max="0.08" step="0.01" value="0.03">
+                </div>
+                <div class="config-group">
+                    <label>文字大小: <span id="textSizeValue" class="value-display">1.0</span></label>
+                    <input type="range" id="textSizeSlider" min="0.8" max="1.2" step="0.05" value="1.0">
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h4>模板颜色</h4>
+                <div class="config-group">
+                    <label>基座颜色: 
+                        <span id="baseColorValue" class="value-display">#a88f12</span>
+                        <div id="baseColorPreview" class="color-preview" style="background-color: #a88f12;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="baseColorPicker" value="#a88f12">
+                    </div>
+                </div>
+                <div class="config-group">
+                    <label>凹槽颜色: 
+                        <span id="grooveColorValue" class="value-display">#8a7310</span>
+                        <div id="grooveColorPreview" class="color-preview" style="background-color: #8a7310;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="grooveColorPicker" value="#8a7310">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h4>按钮颜色</h4>
+                <div class="config-group">
+                    <label>黄色按键: 
+                        <span id="keyYellowValue" class="value-display">#b99c15</span>
+                        <div id="keyYellowPreview" class="color-preview" style="background-color: #b99c15;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="keyYellowPicker" value="#b99c15">
+                    </div>
+                </div>
+                <div class="config-group">
+                    <label>白色按键: 
+                        <span id="keyWhiteValue" class="value-display">#f0f0f0</span>
+                        <div id="keyWhitePreview" class="color-preview" style="background-color: #f0f0f0;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="keyWhitePicker" value="#f0f0f0">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h4>投影效果</h4>
+                <div class="config-group">
+                    <label>投影强度: <span id="shadowIntensityValue" class="value-display">0.6</span></label>
+                    <input type="range" id="shadowIntensitySlider" min="0.1" max="1.0" step="0.1" value="0.6">
+                </div>
+                <div class="config-group">
+                    <label>投影柔化: <span id="shadowSoftnessValue" class="value-display">0.5</span></label>
+                    <input type="range" id="shadowSoftnessSlider" min="0.1" max="1.0" step="0.1" value="0.5">
+                </div>
+                <div class="config-group">
+                    <label>投影颜色: 
+                        <span id="shadowColorValue" class="value-display">#000</span>
+                        <div id="shadowColorPreview" class="color-preview" style="background-color: #000000;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="shadowColorPicker" value="#000000">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h4>亮度与光照</h4>
+                <div class="config-group">
+                    <label>全局亮度: <span id="globalBrightnessValue" class="value-display">1.0</span></label>
+                    <input type="range" id="globalBrightnessSlider" min="0.1" max="2.0" step="0.1" value="1.0">
+                </div>
+                <div class="config-group">
+                    <label>环境光强度: <span id="ambientLightValue" class="value-display">0.8</span></label>
+                    <input type="range" id="ambientLightSlider" min="0.1" max="2.0" step="0.1" value="0.8">
+                </div>
+                <div class="config-group">
+                    <label>主光源强度: <span id="mainLightValue" class="value-display">1.1</span></label>
+                    <input type="range" id="mainLightSlider" min="0.1" max="2.0" step="0.1" value="1.1">
+                </div>
+                <div class="config-group">
+                    <label>补光强度: <span id="fillLightValue" class="value-display">0.4</span></label>
+                    <input type="range" id="fillLightSlider" min="0.1" max="2.0" step="0.1" value="0.4">
+                </div>
+                <div class="config-group">
+                    <label>背光强度: <span id="backLightValue" class="value-display">0.3</span></label>
+                    <input type="range" id="backLightSlider" min="0.1" max="2.0" step="0.1" value="0.3">
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h4>背景颜色</h4>
+                <div class="config-group">
+                    <label>背景主色: 
+                        <span id="bgColor1Value" class="value-display">#1a1a2e</span>
+                        <div id="bgColor1Preview" class="color-preview" style="background-color: #1a1a2e;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="bgColor1Picker" value="#1a1a2e">
+                    </div>
+                </div>
+                <div class="config-group">
+                    <label>背景辅色: 
+                        <span id="bgColor2Value" class="value-display">#16213e</span>
+                        <div id="bgColor2Preview" class="color-preview" style="background-color: #16213e;"></div>
+                    </label>
+                    <div class="color-input-container">
+                        <input type="color" id="bgColor2Picker" value="#16213e">
+                    </div>
+                </div>
+                
+                <label style="margin-bottom: 5px; display: block; color:#ddd; font-size:11px;">预设背景:</label>
+                <div id="colorPresets">
+                    <button class="color-preset-btn" data-bg1="#1a1a2e" data-bg2="#16213e" style="background: linear-gradient(135deg, #1a1a2e, #16213e);">深紫蓝</button>
+                    <button class="color-preset-btn" data-bg1="#2c3e50" data-bg2="#1a252f" style="background: linear-gradient(135deg, #2c3e50, #1a252f);">午夜蓝</button>
+                    <button class="color-preset-btn" data-bg1="#1a1a1a" data-bg2="#0a0a0a" style="background: linear-gradient(135deg, #1a1a1a, #0a0a0a);">深空黑</button>
+                    <button class="color-preset-btn" data-bg1="#3d3d3d" data-bg2="#2b2b2b" style="background: linear-gradient(135deg, #3d3d3d, #2b2b2b);">工业灰</button>
+                    <button class="color-preset-btn" data-bg1="#0f2027" data-bg2="#203a43" style="background: linear-gradient(135deg, #0f2027, #203a43);">深海</button>
+                    <button class="color-preset-btn" data-bg1="#232526" data-bg2="#414345" style="background: linear-gradient(135deg, #232526, #414345);">炭黑</button>
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button id="applyChanges" class="config-button">应用</button>
+                <button id="resetDefaults" class="config-button">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/geometries/RoundedBoxGeometry.js"></script>
+
+    <script>
+        const sounds = {
+            '我要验牌': 'http://app.2091k.cn/3dyy/wyyp.mp3',
+            '牌没问题': 'http://app.2091k.cn/3dyy/pmywt.mp3',
+            '小瘪三': 'http://app.2091k.cn/3dyy/xbs.mp3',
+            '给我擦皮鞋': 'http://app.2091k.cn/3dyy/gwcpx.mp3'
+        };
+
+        const keyTexts = {
+            '我要验牌': { cn: '我要验牌', pinyin: 'wǒ yào yàn pái' },
+            '牌没问题': { cn: '牌没问题', pinyin: 'pái méi yǒu wèn tí' },
+            '小瘪三': { cn: '小瘪三', pinyin: 'xiǎo biē sān' },
+            '给我擦皮鞋': { cn: '给我擦皮鞋', pinyin: 'gěi wǒ cā pí xié' }
+        };
+
+        const COLOR_CONFIG = {
+            BASE_COLOR: 0xa88f12,
+            GROOVE_COLOR: 0x8a7310,
+            KEY_YELLOW: 0xb99c15,
+            KEY_WHITE: 0xf0f0f0
+        };
+
+        const KEY_CONFIGS = [
+            { soundKey: '我要验牌', color: COLOR_CONFIG.KEY_YELLOW, pos: { x: -0.6, y: 0.08, z: -0.6 } },
+            { soundKey: '牌没问题', color: COLOR_CONFIG.KEY_WHITE, pos: { x: 0.6, y: 0.08, z: -0.6 } },
+            { soundKey: '小瘪三', color: COLOR_CONFIG.KEY_WHITE, pos: { x: -0.6, y: 0.08, z: 0.6 } },
+            { soundKey: '给我擦皮鞋', color: COLOR_CONFIG.KEY_YELLOW, pos: { x: 0.6, y: 0.08, z: 0.6 } }
+        ];
+
+        const CAMERA_CONFIG = {
+            POSITION: { x:0, y:0, z:0 },
+            MIN_DISTANCE:3, MAX_DISTANCE:8, MAX_POLAR_ANGLE: Math.PI/1.8
+        };
+
+        let ROUNDED_CONFIG = {
+            keyRadius: 0.05,
+            baseRadius: 0.1,
+            grooveRadius: 0.03,
+            textSize: 1.0
+        };
+        
+        let SHADOW_CONFIG = {
+            intensity: 0.6,
+            softness: 0.5,
+            color: "#000000"
+        };
+        
+        let BACKGROUND_CONFIG = {
+            color1: "#1a1a2e",
+            color2: "#16213e"
+        };
+
+        let TEMPLATE_COLOR_CONFIG = {
+            baseColor: "#652915",
+            grooveColor: "#8a7310"
+        };
+
+        let BUTTON_COLOR_CONFIG = {
+            keyYellow: "#b99c15",
+            keyWhite: "#828282"
+        };
+
+        let LIGHT_CONFIG = {
+            globalBrightness: 1.0,
+            mainLightIntensity: 1.0,
+            ambientLightIntensity: 0.8,
+            fillLightIntensity: 0.4,
+            backLightIntensity: 0.1
+        };
+
+        const DEFAULT_CONFIG = {
+            ROUNDED_CONFIG: { keyRadius: 0.15, baseRadius: 0.1, grooveRadius: 0.03, textSize: 1.0 },
+            SHADOW_CONFIG: { intensity: 0.6, softness: 0.5, color: "#000000" },
+            BACKGROUND_CONFIG: { color1: "#1a1a2e", color2: "#16213e" },
+            TEMPLATE_COLOR_CONFIG: { baseColor: "#a88f12", grooveColor: "#8a7310" },
+            BUTTON_COLOR_CONFIG: { keyYellow: "#b99c15", keyWhite: "#f0f0f0" },
+            LIGHT_CONFIG: { globalBrightness:1.0, mainLightIntensity:1.1, ambientLightIntensity:0.8, fillLightIntensity:0.4, backLightIntensity:0.3 }
+        };
+
+        let scene, camera, renderer, controls;
+        let keys = [];
+        let base, grooves = [];
+        let keyShadows = [];
+        let updateTimeout = null;
+        let ambientLight, mainDirectionalLight, fillLight, backLight;
+
+        function init(){
+            document.getElementById('loading').style.display='none';
+            scene = new THREE.Scene(); 
+            scene.background = null;
+
+            camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+            camera.position.set(CAMERA_CONFIG.POSITION.x,CAMERA_CONFIG.POSITION.y,CAMERA_CONFIG.POSITION.z);
+            camera.lookAt(0,0,0);
+
+            renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+            renderer.setSize(innerWidth,innerHeight);
+            renderer.setPixelRatio(devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor=0.08;
+            controls.maxPolarAngle = CAMERA_CONFIG.MAX_POLAR_ANGLE;
+            controls.minDistance = CAMERA_CONFIG.MIN_DISTANCE;
+            controls.maxDistance = CAMERA_CONFIG.MAX_DISTANCE;
+
+            ambientLight = new THREE.AmbientLight(0xffffff, LIGHT_CONFIG.ambientLightIntensity * LIGHT_CONFIG.globalBrightness);
+            scene.add(ambientLight);
+            
+            mainDirectionalLight = new THREE.DirectionalLight(0xffffff, LIGHT_CONFIG.mainLightIntensity * LIGHT_CONFIG.globalBrightness);
+            mainDirectionalLight.position.set(3,7,5); 
+            mainDirectionalLight.castShadow = true;
+            mainDirectionalLight.shadow.mapSize.width = 2048;
+            mainDirectionalLight.shadow.mapSize.height = 2048;
+            mainDirectionalLight.shadow.camera.near = 0.5;
+            mainDirectionalLight.shadow.camera.far = 50;
+            mainDirectionalLight.shadow.camera.left = -10;
+            mainDirectionalLight.shadow.camera.right = 10;
+            mainDirectionalLight.shadow.camera.top = 10;
+            mainDirectionalLight.shadow.camera.bottom = -10;
+            mainDirectionalLight.shadow.radius = 2;
+            scene.add(mainDirectionalLight);
+            
+            fillLight = new THREE.DirectionalLight(0xffffff, LIGHT_CONFIG.fillLightIntensity * LIGHT_CONFIG.globalBrightness);
+            fillLight.position.set(-3,5,2);
+            scene.add(fillLight);
+            
+            backLight = new THREE.DirectionalLight(0xffffff, LIGHT_CONFIG.backLightIntensity * LIGHT_CONFIG.globalBrightness);
+            backLight.position.set(0,3,-5);
+            scene.add(backLight);
+
+            createBase();
+            createKeys();
+            updateBackground();
+            setupConfigPanel();
+            bindEvents();
+            animate();
+        }
+
+        // 修改updateBackground函数：只更新主背景色，网格线由伪元素独立渲染
+        function updateBackground() {
+            const bgColor1 = BACKGROUND_CONFIG.color1;
+            const bgColor2 = BACKGROUND_CONFIG.color2;
+            // 仅修改径向渐变的主背景，网格线不受影响
+            document.body.style.background = `radial-gradient(circle at 50% 50%, ${bgColor1} 0%, ${bgColor2} 100%)`;
+        }
+
+        function updateTemplateColors() {
+            if (base) base.material.color.set(TEMPLATE_COLOR_CONFIG.baseColor);
+            grooves.forEach(g => g.material.color.set(TEMPLATE_COLOR_CONFIG.grooveColor));
+        }
+
+        function updateButtonColors() {
+            keys.forEach((k,i)=>{
+                const c = KEY_CONFIGS[i].color===COLOR_CONFIG.KEY_YELLOW ? BUTTON_COLOR_CONFIG.keyYellow : BUTTON_COLOR_CONFIG.keyWhite;
+                k.material.color.set(c);
+            });
+        }
+
+        function updateLightIntensity() {
+            ambientLight.intensity = LIGHT_CONFIG.ambientLightIntensity * LIGHT_CONFIG.globalBrightness;
+            mainDirectionalLight.intensity = LIGHT_CONFIG.mainLightIntensity * LIGHT_CONFIG.globalBrightness;
+            fillLight.intensity = LIGHT_CONFIG.fillLightIntensity * LIGHT_CONFIG.globalBrightness;
+            backLight.intensity = LIGHT_CONFIG.backLightIntensity * LIGHT_CONFIG.globalBrightness;
+        }
+
+        function createBase(){
+            if (base) scene.remove(base);
+            const g = new THREE.RoundedBoxGeometry(2.5, 1.1, 2.5, 8, ROUNDED_CONFIG.baseRadius);
+            const m = new THREE.MeshStandardMaterial({color:TEMPLATE_COLOR_CONFIG.baseColor,roughness:0.2,metalness:0.03});
+            base = new THREE.Mesh(g,m);
+            base.position.y=-0.55;
+            base.castShadow=base.receiveShadow=true;
+            scene.add(base);
+            createGrooves(base);
+        }
+
+        function createGrooves(p){
+            grooves.forEach(g=>{if(g.parent)g.parent.remove(g)});grooves=[];
+            const ps=[{x:-0.6,y:0.48,z:-0.6},{x:0.6,y:0.48,z:-0.6},{x:-0.6,y:0.48,z:0.6},{x:0.6,y:0.48,z:0.6}];
+            ps.forEach(pos=>{
+                const g=new THREE.RoundedBoxGeometry(1.05,0.1,1.05,4,ROUNDED_CONFIG.grooveRadius);
+                const m=new THREE.MeshStandardMaterial({color:TEMPLATE_COLOR_CONFIG.grooveColor,roughness:0.25});
+                const o=new THREE.Mesh(g,m);
+                o.position.set(pos.x,pos.y,pos.z);
+                o.castShadow=o.receiveShadow=true;
+                p.add(o);grooves.push(o);
+            });
+        }
+
+        function createKeys(){
+            keys.forEach(k=>scene.remove(k));keys=[];
+            keyShadows.forEach(s=>scene.remove(s));keyShadows=[];
+            KEY_CONFIGS.forEach(cfg=>{
+                const sc=new THREE.Color(SHADOW_CONFIG.color);
+                const sg=new THREE.RoundedBoxGeometry(1.05,0.05,1.05,6,ROUNDED_CONFIG.keyRadius*0.8);
+                const sm=new THREE.MeshStandardMaterial({color:sc,transparent:true,opacity:SHADOW_CONFIG.intensity*0.7,roughness:0.9,metalness:0});
+                const s=new THREE.Mesh(sg,sm);
+                s.position.set(cfg.pos.x,cfg.pos.y-0.25,cfg.pos.z);
+                s.userData={originalY:cfg.pos.y-0.25,keyIndex:keys.length};
+                scene.add(s);keyShadows.push(s);
+
+                const kg=new THREE.RoundedBoxGeometry(1,0.33,1,6,ROUNDED_CONFIG.keyRadius);
+                const kc=cfg.color===COLOR_CONFIG.KEY_YELLOW ? BUTTON_COLOR_CONFIG.keyYellow : BUTTON_COLOR_CONFIG.keyWhite;
+                const km=new THREE.MeshStandardMaterial({color:kc,roughness:0.25,metalness:0.02});
+                const k=new THREE.Mesh(kg,km);
+                k.position.set(cfg.pos.x,cfg.pos.y,cfg.pos.z);
+                k.userData={sound:cfg.soundKey,originalY:cfg.pos.y,isPressed:false,shadowIndex:keyShadows.length-1};
+                k.castShadow=k.receiveShadow=true;
+                createKeyText(k,cfg.soundKey);
+                scene.add(k);keys.push(k);
+            });
+        }
+
+        function createKeyText(key,sk){
+            key.children.forEach(c=>{if(c.isMesh&&c.material.map)key.remove(c)});
+            const c=document.createElement('canvas');c.width=2048;c.height=2048;
+            const ctx=c.getContext('2d');ctx.fillStyle='#000';ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.font='bold 380px "Noto Sans SC"';ctx.fillText(keyTexts[sk].cn,1024,900);
+            ctx.font='bold 140px "Noto Sans SC"';ctx.fillText(keyTexts[sk].pinyin,1024,1250);
+            const t=new THREE.CanvasTexture(c);
+            const tm=new THREE.MeshBasicMaterial({map:t,transparent:true,depthWrite:false,depthTest:false});
+            const mes=new THREE.Mesh(new THREE.PlaneGeometry(ROUNDED_CONFIG.textSize,ROUNDED_CONFIG.textSize),tm);
+            mes.position.y=0.165;mes.rotation.x=-Math.PI/2;key.add(mes);
+        }
+
+        function updateModel(immediate=false){
+            if(updateTimeout)clearTimeout(updateTimeout);
+            if(immediate){createBase();createKeys();return;}
+            updateTimeout=setTimeout(()=>{createBase();createKeys();updateTimeout=null;},50);
+        }
+
+        function setupConfigPanel(){
+            const p=document.getElementById('config-panel');
+            const t=document.getElementById('toggle-config');
+            const cl=document.getElementById('closePanel');
+            t.onclick=()=>{p.style.display=p.style.display=='none'?'block':'none';};
+            cl.onclick=()=>p.style.display='none';
+            document.addEventListener('click',e=>{
+                if(p.style.display=='block'&&!p.contains(e.target)&&e.target!==t)p.style.display='none';
+            });
+
+            const ui=()=>{
+                document.getElementById('keyRadiusSlider').value=ROUNDED_CONFIG.keyRadius;
+                document.getElementById('keyRadiusValue').textContent=ROUNDED_CONFIG.keyRadius.toFixed(2);
+                document.getElementById('baseRadiusSlider').value=ROUNDED_CONFIG.baseRadius;
+                document.getElementById('baseRadiusValue').textContent=ROUNDED_CONFIG.baseRadius.toFixed(2);
+                document.getElementById('grooveRadiusSlider').value=ROUNDED_CONFIG.grooveRadius;
+                document.getElementById('grooveRadiusValue').textContent=ROUNDED_CONFIG.grooveRadius.toFixed(2);
+                document.getElementById('textSizeSlider').value=ROUNDED_CONFIG.textSize;
+                document.getElementById('textSizeValue').textContent=ROUNDED_CONFIG.textSize.toFixed(1);
+
+                document.getElementById('shadowIntensitySlider').value=SHADOW_CONFIG.intensity;
+                document.getElementById('shadowIntensityValue').textContent=SHADOW_CONFIG.intensity.toFixed(1);
+                document.getElementById('shadowSoftnessSlider').value=SHADOW_CONFIG.softness;
+                document.getElementById('shadowSoftnessValue').textContent=SHADOW_CONFIG.softness.toFixed(1);
+                document.getElementById('shadowColorPicker').value=SHADOW_CONFIG.color;
+                document.getElementById('shadowColorValue').textContent=SHADOW_CONFIG.color;
+                document.getElementById('shadowColorPreview').style.backgroundColor=SHADOW_CONFIG.color;
+
+                document.getElementById('bgColor1Picker').value=BACKGROUND_CONFIG.color1;
+                document.getElementById('bgColor1Value').textContent=BACKGROUND_CONFIG.color1;
+                document.getElementById('bgColor1Preview').style.backgroundColor=BACKGROUND_CONFIG.color1;
+                document.getElementById('bgColor2Picker').value=BACKGROUND_CONFIG.color2;
+                document.getElementById('bgColor2Value').textContent=BACKGROUND_CONFIG.color2;
+                document.getElementById('bgColor2Preview').style.backgroundColor=BACKGROUND_CONFIG.color2;
+
+                document.getElementById('baseColorPicker').value=TEMPLATE_COLOR_CONFIG.baseColor;
+                document.getElementById('baseColorValue').textContent=TEMPLATE_COLOR_CONFIG.baseColor;
+                document.getElementById('baseColorPreview').style.backgroundColor=TEMPLATE_COLOR_CONFIG.baseColor;
+                document.getElementById('grooveColorPicker').value=TEMPLATE_COLOR_CONFIG.grooveColor;
+                document.getElementById('grooveColorValue').textContent=TEMPLATE_COLOR_CONFIG.grooveColor;
+                document.getElementById('grooveColorPreview').style.backgroundColor=TEMPLATE_COLOR_CONFIG.grooveColor;
+
+                document.getElementById('keyYellowPicker').value=BUTTON_COLOR_CONFIG.keyYellow;
+                document.getElementById('keyYellowValue').textContent=BUTTON_COLOR_CONFIG.keyYellow;
+                document.getElementById('keyYellowPreview').style.backgroundColor=BUTTON_COLOR_CONFIG.keyYellow;
+                document.getElementById('keyWhitePicker').value=BUTTON_COLOR_CONFIG.keyWhite;
+                document.getElementById('keyWhiteValue').textContent=BUTTON_COLOR_CONFIG.keyWhite;
+                document.getElementById('keyWhitePreview').style.backgroundColor=BUTTON_COLOR_CONFIG.keyWhite;
+
+                document.getElementById('globalBrightnessSlider').value=LIGHT_CONFIG.globalBrightness;
+                document.getElementById('globalBrightnessValue').textContent=LIGHT_CONFIG.globalBrightness.toFixed(1);
+                document.getElementById('ambientLightSlider').value=LIGHT_CONFIG.ambientLightIntensity;
+                document.getElementById('ambientLightValue').textContent=LIGHT_CONFIG.ambientLightIntensity.toFixed(1);
+                document.getElementById('mainLightSlider').value=LIGHT_CONFIG.mainLightIntensity;
+                document.getElementById('mainLightValue').textContent=LIGHT_CONFIG.mainLightIntensity.toFixed(1);
+                document.getElementById('fillLightSlider').value=LIGHT_CONFIG.fillLightIntensity;
+                document.getElementById('fillLightValue').textContent=LIGHT_CONFIG.fillLightIntensity.toFixed(1);
+                document.getElementById('backLightSlider').value=LIGHT_CONFIG.backLightIntensity;
+                document.getElementById('backLightValue').textContent=LIGHT_CONFIG.backLightIntensity.toFixed(1);
+            };
+            ui();
+
+            document.getElementById('keyRadiusSlider').oninput=function(){
+                ROUNDED_CONFIG.keyRadius=+this.value;
+                document.getElementById('keyRadiusValue').textContent=this.value;updateModel();
+            };
+            document.getElementById('baseRadiusSlider').oninput=function(){
+                ROUNDED_CONFIG.baseRadius=+this.value;
+                document.getElementById('baseRadiusValue').textContent=this.value;updateModel();
+            };
+            document.getElementById('grooveRadiusSlider').oninput=function(){
+                ROUNDED_CONFIG.grooveRadius=+this.value;
+                document.getElementById('grooveRadiusValue').textContent=this.value;updateModel();
+            };
+            document.getElementById('textSizeSlider').oninput=function(){
+                ROUNDED_CONFIG.textSize=+this.value;
+                document.getElementById('textSizeValue').textContent=this.value;updateModel();
+            };
+
+            document.getElementById('shadowIntensitySlider').oninput=function(){
+                SHADOW_CONFIG.intensity=+this.value;
+                document.getElementById('shadowIntensityValue').textContent=this.value;
+                keyShadows.forEach(s=>s.material.opacity=SHADOW_CONFIG.intensity*0.7);
+            };
+            document.getElementById('shadowSoftnessSlider').oninput=function(){
+                SHADOW_CONFIG.softness=+this.value;
+                document.getElementById('shadowSoftnessValue').textContent=this.value;
+                scene.traverse(o=>{if(o.isDirectionalLight&&o.shadow)o.shadow.radius=SHADOW_CONFIG.softness*3;});
+            };
+            document.getElementById('shadowColorPicker').oninput=function(){
+                SHADOW_CONFIG.color=this.value;
+                document.getElementById('shadowColorValue').textContent=this.value;
+                document.getElementById('shadowColorPreview').style.backgroundColor=this.value;
+                const nc=new THREE.Color(this.value);
+                keyShadows.forEach(s=>s.material.color=nc);
+            };
+
+            document.getElementById('bgColor1Picker').oninput=function(){
+                BACKGROUND_CONFIG.color1=this.value;
+                document.getElementById('bgColor1Value').textContent=this.value;
+                document.getElementById('bgColor1Preview').style.backgroundColor=this.value;
+                updateBackground();
+            };
+            document.getElementById('bgColor2Picker').oninput=function(){
+                BACKGROUND_CONFIG.color2=this.value;
+                document.getElementById('bgColor2Value').textContent=this.value;
+                document.getElementById('bgColor2Preview').style.backgroundColor=this.value;
+                updateBackground();
+            };
+
+            document.getElementById('baseColorPicker').oninput=function(){
+                TEMPLATE_COLOR_CONFIG.baseColor=this.value;
+                document.getElementById('baseColorValue').textContent=this.value;
+                document.getElementById('baseColorPreview').style.backgroundColor=this.value;
+                updateTemplateColors();
+            };
+            document.getElementById('grooveColorPicker').oninput=function(){
+                TEMPLATE_COLOR_CONFIG.grooveColor=this.value;
+                document.getElementById('grooveColorValue').textContent=this.value;
+                document.getElementById('grooveColorPreview').style.backgroundColor=this.value;
+                updateTemplateColors();
+            };
+
+            document.getElementById('keyYellowPicker').oninput=function(){
+                BUTTON_COLOR_CONFIG.keyYellow=this.value;
+                document.getElementById('keyYellowValue').textContent=this.value;
+                document.getElementById('keyYellowPreview').style.backgroundColor=this.value;
+                updateButtonColors();
+            };
+            document.getElementById('keyWhitePicker').oninput=function(){
+                BUTTON_COLOR_CONFIG.keyWhite=this.value;
+                document.getElementById('keyWhiteValue').textContent=this.value;
+                document.getElementById('keyWhitePreview').style.backgroundColor=this.value;
+                updateButtonColors();
+            };
+
+            document.getElementById('globalBrightnessSlider').oninput=function(){
+                LIGHT_CONFIG.globalBrightness=+this.value;
+                document.getElementById('globalBrightnessValue').textContent=this.value;
+                updateLightIntensity();
+            };
+            document.getElementById('ambientLightSlider').oninput=function(){
+                LIGHT_CONFIG.ambientLightIntensity=+this.value;
+                document.getElementById('ambientLightValue').textContent=this.value;
+                updateLightIntensity();
+            };
+            document.getElementById('mainLightSlider').oninput=function(){
+                LIGHT_CONFIG.mainLightIntensity=+this.value;
+                document.getElementById('mainLightValue').textContent=this.value;
+                updateLightIntensity();
+            };
+            document.getElementById('fillLightSlider').oninput=function(){
+                LIGHT_CONFIG.fillLightIntensity=+this.value;
+                document.getElementById('fillLightValue').textContent=this.value;
+                updateLightIntensity();
+            };
+            document.getElementById('backLightSlider').oninput=function(){
+                LIGHT_CONFIG.backLightIntensity=+this.value;
+                document.getElementById('backLightValue').textContent=this.value;
+                updateLightIntensity();
+            };
+
+            document.querySelectorAll('.color-preset-btn').forEach(b=>{
+                b.onclick=function(){
+                    const bg1=this.dataset.bg1,bg2=this.dataset.bg2;
+                    BACKGROUND_CONFIG.color1=bg1;BACKGROUND_CONFIG.color2=bg2;
+                    document.getElementById('bgColor1Picker').value=bg1;
+                    document.getElementById('bgColor1Value').textContent=bg1;
+                    document.getElementById('bgColor1Preview').style.backgroundColor=bg1;
+                    document.getElementById('bgColor2Picker').value=bg2;
+                    document.getElementById('bgColor2Value').textContent=bg2;
+                    document.getElementById('bgColor2Preview').style.backgroundColor=bg2;
+                    updateBackground();
+                };
+            });
+
+            document.getElementById('applyChanges').onclick=function(){
+                updateModel(true);p.style.display='none';
+            };
+            document.getElementById('resetDefaults').onclick=function(){
+                ROUNDED_CONFIG={...DEFAULT_CONFIG.ROUNDED_CONFIG};
+                SHADOW_CONFIG={...DEFAULT_CONFIG.SHADOW_CONFIG};
+                BACKGROUND_CONFIG={...DEFAULT_CONFIG.BACKGROUND_CONFIG};
+                TEMPLATE_COLOR_CONFIG={...DEFAULT_CONFIG.TEMPLATE_COLOR_CONFIG};
+                BUTTON_COLOR_CONFIG={...DEFAULT_CONFIG.BUTTON_COLOR_CONFIG};
+                LIGHT_CONFIG={...DEFAULT_CONFIG.LIGHT_CONFIG};
+                ui();updateModel(true);updateBackground();
+                updateTemplateColors();updateButtonColors();updateLightIntensity();
+                const ot=this.textContent;
+                this.textContent='已恢复!';
+                setTimeout(()=>this.textContent=ot,1000);
+            };
+        }
+
+        function bindEvents(){
+            const ray=new THREE.Raycaster();const m=new THREE.Vector2();
+            window.addEventListener('click',e=>{
+                const p=document.getElementById('config-panel');
+                if(p.style.display=='block'&&(p.contains(e.target)||e.target.id=='toggle-config'))return;
+                m.x=(e.clientX/innerWidth)*2-1;
+                m.y=-(e.clientY/innerHeight)*2+1;
+                ray.setFromCamera(m,camera);
+                const r=ray.intersectObjects(keys);
+                if(r.length){
+                    const k=r[0].object;
+                    if(k.userData.isPressed)return;
+                    k.userData.isPressed=true;
+                    const s=keyShadows[k.userData.shadowIndex];
+                    const press=()=>{
+                        const dk=k.userData.originalY-0.12-k.position.y;
+                        const ds=s.userData.originalY-0.08-s.position.y;
+                        if(Math.abs(dk)>0.005){
+                            k.position.y+=dk*0.3;
+                            s.position.y+=ds*0.3;
+                            s.scale.x=s.scale.z=0.95;
+                            requestAnimationFrame(press);
+                        }else setTimeout(release,100);
+                    };
+                    const release=()=>{
+                        const dk=k.userData.originalY-k.position.y;
+                        const ds=s.userData.originalY-s.position.y;
+                        if(Math.abs(dk)>0.005){
+                            k.position.y+=dk*0.2;
+                            s.position.y+=ds*0.2;
+                            requestAnimationFrame(release);
+                        }else{
+                            k.position.y=k.userData.originalY;
+                            s.position.y=s.userData.originalY;
+                            s.scale.x=s.scale.z=1;
+                            k.userData.isPressed=false;
+                        }
+                    };
+                    press();
+                    try{new Audio(sounds[k.userData.sound]).play();}catch(e){}
+                }
+            });
+            window.addEventListener('resize',()=>{
+                camera.aspect=innerWidth/innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(innerWidth,innerHeight);
+            });
+        }
+
+        function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}
+        window.addEventListener('load',init);
+    </script>
+</body>
+</html>
